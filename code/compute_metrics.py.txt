@@ -1,0 +1,35 @@
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from scipy.stats import mannwhitneyu
+
+DATA = Path("data")
+
+def cohens_d(x, y):
+    nx, ny = len(x), len(y)
+    pooled_std = np.sqrt(((nx - 1) * np.var(x, ddof=1) + (ny - 1) * np.var(y, ddof=1)) / (nx + ny - 2))
+    return (np.mean(y) - np.mean(x)) / pooled_std
+
+def main():
+    meta = pd.read_csv(DATA / "papers.csv")
+    H = (meta.author == "Hamilton").values
+    M = (meta.author == "Madison").values
+    
+    sb = np.load(DATA / "scores_blind.npy")[:, 0]
+    d_blind = cohens_d(sb[H], sb[M])
+    _, p_blind = mannwhitneyu(sb[H], sb[M], alternative='two-sided')
+    
+    sbs = np.load(DATA / "scores_blind_std.npy")[:, 0]
+    d_std = cohens_d(sbs[H], sbs[M])
+    _, p_std = mannwhitneyu(sbs[H], sbs[M], alternative='two-sided')
+    
+    sc = np.load(DATA / "scores_calibrated.npy")[:, 0]
+    d_cal = cohens_d(sc[H], sc[M])
+    _, p_cal = mannwhitneyu(sc[H], sc[M], alternative='two-sided')
+    
+    print(f"Blind centred : Cohen's d = {d_blind:.3f}, Mann-Whitney p = {p_blind:.4f}")
+    print(f"Blind std     : Cohen's d = {d_std:.3f}, Mann-Whitney p = {p_std:.4f}")
+    print(f"Calibrated    : Cohen's d = {d_cal:.3f}, Mann-Whitney p = {p_cal:.4f}")
+
+if __name__ == "__main__":
+    main()

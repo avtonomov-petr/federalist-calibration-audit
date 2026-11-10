@@ -1,0 +1,51 @@
+import urllib.request
+import re
+import json
+from pathlib import Path
+
+URL = "https://www.gutenberg.org/cache/epub/18/pg18.txt"
+OUT_FILE = Path("data/articles.json")
+
+def roman_to_int(s):
+    d = {'I':1, 'V':5, 'X':10, 'L':50, 'C':100}
+    r = 0
+    for i, c in enumerate(s):
+        if i+1 < len(s) and d[c] < d[s[i+1]]:
+            r -= d[c]
+        else:
+            r += d[c]
+    return r
+
+def main():
+    print("Downloading Gutenberg #18...")
+    try:
+        raw = urllib.request.urlopen(URL, timeout=30).read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        print(f"Failed to download: {e}")
+        return
+
+    print(f"Downloaded {len(raw):,} characters.")
+    
+    pat = re.compile(r"THE FEDERALIST\.\s*\n\s*No\.\s*([IVXL]+)\.", re.MULTILINE)
+    matches = list(pat.finditer(raw))
+    print(f"Found {len(matches)} headers.")
+
+    articles = {}
+    for i, m in enumerate(matches):
+        n = roman_to_int(m.group(1))
+        start = m.end()
+        end = matches[i+1].start() if i+1 < len(matches) else len(raw)
+        text = raw[start:end]
+        # Если дубликат, берем самый длинный
+        if n not in articles or len(text) > len(articles[n]):
+            articles[n] = text
+
+    print(f"Extracted {len(articles)} articles.")
+    
+    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(OUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(articles, f)
+    print(f"Saved to {OUT_FILE}")
+
+if __name__ == "__main__":
+    main()

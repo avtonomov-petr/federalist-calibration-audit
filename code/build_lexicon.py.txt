@@ -1,0 +1,49 @@
+import json
+import re
+from collections import Counter
+import pandas as pd
+from pathlib import Path
+
+ARTICLES_FILE = Path("data/articles.json")
+METADATA_FILE = Path("data/papers.csv")
+OUT_FILE = Path("data/papers_lexicon_clean.csv")
+
+def tokenize(text):
+    return re.findall(r"\b[a-z]+\b", text.lower())
+
+def main():
+    print("Loading data...")
+    with open(ARTICLES_FILE, "r", encoding="utf-8") as f:
+        articles = json.load(f)
+    meta = pd.read_csv(METADATA_FILE)
+
+    print("Counting words...")
+    counters = {int(n): Counter(tokenize(t)) for n, t in articles.items()}
+    
+    global_vocab = Counter()
+    for c in counters.values():
+        global_vocab.update(c)
+
+    top500 = [w for w, _ in global_vocab.most_common(500)]
+    print(f"'number' in top-500: {'number' in top500}")
+
+    print("Building lexicon matrix...")
+    rows = []
+    for _, r in meta.iterrows():
+        n = int(r["number"])
+        tokens = tokenize(articles[str(n)]) # json keys are strings
+        total = len(tokens)
+        
+        row = {"number": n, "author": r["author"], "total_tokens": total}
+        for w in top500:
+            row[f"w_{w}"] = round(counters[n][w] / total * 1000, 4) if total else 0.0
+        rows.append(row)
+
+    lex = pd.DataFrame(rows)
+    assert lex.shape == (85, 503), f"Shape mismatch: {lex.shape}"
+    
+    lex.to_csv(OUT_FILE, index=False)
+    print(f"Saved: {OUT_FILE}")
+
+if __name__ == "__main__":
+    main()

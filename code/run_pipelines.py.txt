@@ -1,0 +1,47 @@
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+DATA = Path("data")
+LEX_FILE = DATA / "papers_lexicon_clean.csv"
+META_FILE = DATA / "papers.csv"
+
+def main():
+    lex = pd.read_csv(LEX_FILE)
+    meta = pd.read_csv(META_FILE)
+
+    # --- Blind (centred) ---
+    cols = [c for c in lex.columns if c.startswith("w_") and c != "w_number"]
+    X = lex[cols].values.astype(float)
+    Xc = X - X.mean(axis=0)
+    
+    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    np.save(DATA / "scores_blind.npy", U[:, :2] * S[:2])
+    
+    load = Vt[0].copy()
+    if load[cols.index("w_the")] < 0: load = -load
+    print(f"Blind centred: PC1={(S[0]**2)/(S**2).sum()*100:.2f}% | "
+          f"the={load[cols.index('w_the')]:+.4f} | "
+          f"of={load[cols.index('w_of')]:+.4f} | "
+          f"and={load[cols.index('w_and')]:+.4f}")
+
+    # --- Blind (standardised) ---
+    Xs = Xc / X.std(axis=0, ddof=1)
+    U2, S2, Vt2 = np.linalg.svd(Xs, full_matrices=False)
+    np.save(DATA / "scores_blind_std.npy", U2[:, :2] * S2[:2])
+    print(f"Blind std   : PC1={(S2[0]**2)/(S2**2).sum()*100:.2f}% | "
+          f"PC2={(S2[1]**2)/(S2**2).sum()*100:.2f}%")
+
+    # --- Calibrated ---
+    markers = ["upon_per1000","while_per1000","whilst_per1000","on_per1000",
+               "there_per1000","may_per1000","an_per1000","to_per1000",
+               "face_per1000","kind_per1000","state_per1000"]
+    Xm = meta[markers].values.astype(float)
+    Xm = Xm - Xm.mean(axis=0)
+    Uc, Sc, Vtc = np.linalg.svd(Xm, full_matrices=False)
+    np.save(DATA / "scores_calibrated.npy", Uc[:, :2] * Sc[:2])
+    print(f"Calibrated  : PC1={(Sc[0]**2)/(Sc**2).sum()*100:.2f}% | "
+          f"PC2={(Sc[1]**2)/(Sc**2).sum()*100:.2f}%")
+
+if __name__ == "__main__":
+    main()

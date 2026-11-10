@@ -1,0 +1,81 @@
+import numpy as np
+import pandas as pd
+from pathlib import Path
+import random
+
+DATA = Path("data")
+META_FILE = DATA / "papers.csv"
+
+def main():
+    meta = pd.read_csv(META_FILE)
+    
+    markers = ["upon_per1000","while_per1000","whilst_per1000","on_per1000",
+               "there_per1000","may_per1000","an_per1000","to_per1000",
+               "face_per1000","kind_per1000","state_per1000"]
+    
+    H = (meta.author == "Hamilton").values
+    M = (meta.author == "Madison").values
+    disputed_mask = meta.author == "Disputed"
+    disputed_nums = meta[disputed_mask]["number"].values
+    
+    X = meta[markers].values.astype(float)
+    
+    n_specs = 500
+    verdicts = []
+    
+    print(f"Running {n_specs} specifications...")
+    random.seed(42)
+    np.random.seed(42)
+    
+    for _ in range(n_specs):
+        k = random.randint(6, 11)
+        subset_idx = random.sample(range(11), k)
+        standardise = random.choice([True, False])
+        
+        X_sub = X[:, subset_idx]
+        if standardise:
+            X_sub = (X_sub - X_sub.mean(axis=0)) / X_sub.std(axis=0, ddof=1)
+        else:
+            X_sub = X_sub - X_sub.mean(axis=0)
+            
+        centroid_H = X_sub[H].mean(axis=0)
+        centroid_M = X_sub[M].mean(axis=0)
+        
+        cov_H = np.cov(X_sub[H].T)
+        cov_M = np.cov(X_sub[M].T)
+        
+        if k == 1:
+            cov_pooled = np.array([[ (cov_H + cov_M) / 2 ]])
+        else:
+            n_H, n_M = H.sum(), M.sum()
+            cov_pooled = ((n_H - 1) * cov_H + (n_M - 1) * cov_M) / (n_H + n_M - 2)
+            
+        inv_cov = np.linalg.pinv(cov_pooled) # pinv for safety
+        
+        spec_verdicts = []
+        for i, is_disputed in enumerate(disputed_mask):
+            if not is_disputed: continue
+            
+            x = X_sub[i]
+            diff_H = x - centroid_H
+            diff_M = x - centroid_M
+            
+            t2_H = diff_H @ inv_cov @ diff_H
+            t2_M = diff_M @ inv_cov @ diff_M
+            
+            spec_verdicts.append("Madison" if t2_M < t2_H else "Hamilton")
+            
+        verdicts.append(spec_verdicts)
+        
+    verdicts = np.array(verdicts, dtype='<U8')
+    np.save(DATA / "spec_verdicts.npy", verdicts)
+    np.save(DATA / "spec_disputed_nums.npy", disputed_nums)
+    
+    print("Saved spec_verdicts.npy and spec_disputed_nums.npy")
+    
+    madison_pct = (verdicts == "Madison").mean(axis=0) * 100
+    for num, pct in zip(disputed_nums, madison_pct):
+        print(f"Fed {num}: {pct:.1f}% Madison")
+
+if __name__ == "__main__":
+    main()
